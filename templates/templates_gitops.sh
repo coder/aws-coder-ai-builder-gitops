@@ -10,4 +10,4 @@ export TF_VAR_coder_gitsha="$(git log -1 --format=%H)"
 
 #Execute Terraform Sync
 terraform refresh
-terraform apply
+terraform apply -auto-approve
