@@ -181,7 +181,7 @@ resource "coder_app" "kiro_auth" {
     slug         = "kiro-auth"
     display_name = "Authenticate Kiro"
     icon         = "${data.coder_workspace.me.access_url}/icon/kiro.svg"
-    command      = "kiro-cli auth login"
+    command      = "kiro-cli login"
     share        = "owner"
     order        = 2
 }
