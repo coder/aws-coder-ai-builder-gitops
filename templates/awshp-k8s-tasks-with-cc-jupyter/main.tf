@@ -159,11 +159,12 @@ resource "coder_env" "bedrock_use" {
   value    = "1"
 }
 
-resource "coder_env" "bedrock_api_key" {
-  agent_id = coder_agent.dev.id
-  name     = "AWS_BEARER_TOKEN_BEDROCK"
-  value    = var.aws_bearer_token_bedrock
-}
+# Uncomment and update variable aws_bearer_token_bedrock if AWS workspace permissions don't support direct AWS Bedrock integration
+# resource "coder_env" "bedrock_api_key" {
+#  agent_id = coder_agent.dev.id
+#  name     = "AWS_BEARER_TOKEN_BEDROCK"
+#  value    = var.aws_bearer_token_bedrock
+#}
 
 resource "coder_agent" "dev" {
     arch = "amd64"
