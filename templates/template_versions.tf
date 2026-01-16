@@ -59,7 +59,7 @@ resource "coderd_template" "awshp-k8s-with-kiro_cli" {
   description = "Provision Kubernetes Deployments as Coder workspaces with Kiro CLI Agent."
   icon = "/icon/k8s.png"
   versions = [{
-    directory = "./awshp-k8s-with-kiro_cli"
+    directory = "./awshp-k8s-with-kiro-cli"
     active    = true
     # Version name is optional
     name = var.coder_gitsha
