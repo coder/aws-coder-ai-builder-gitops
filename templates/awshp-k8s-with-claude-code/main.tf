@@ -5,8 +5,8 @@ terraform {
             version = "2.37.1"
         }
         coder = {
-            source = "coder/coder"
-            version = "2.8.0"
+            source  = "coder/coder"
+            version = ">= 2.13"
         }
         random = {
             source = "hashicorp/random"
@@ -21,16 +21,17 @@ variable "namespace" {
   default     = "coder"
 }
 
+variable "aws_bearer_token_bedrock" {
+  type        = string
+  description = "Your AWS Bedrock bearer token. This provides access to Bedrock without needing separate access key and secret key."
+  sensitive   = true
+  default     = "xxxx-xxx-xxxx"
+}
+
 variable "anthropic_model" {
   type        = string
   description = "The AWS Inference profile ID of the base Anthropic model to use with Claude Code"
-  default     = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-}
-
-variable "anthropic_small_fast_model" {
-  type        = string
-  description = "The AWS Inference profile ID of the small fast Anthropic model to use with Claude Code"
-  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "global.anthropic.claude-opus-4-5-20251101-v1:0"
 }
 
 locals {
@@ -81,7 +82,7 @@ data "coder_parameter" "disk_size" {
   }
   form_type = "slider"
   mutable   = true
-  default   = 10
+  default   = 30
   order     = 3
 }
 
@@ -96,87 +97,6 @@ data "coder_parameter" "ai_prompt" {
 
 data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
-
-resource "coder_agent" "dev" {
-    arch = "amd64"
-    os = "linux"
-    dir = local.home_folder
-    env = {
-        CODER_MCP_CLAUDE_TASK_PROMPT        = local.task_prompt
-        CODER_MCP_CLAUDE_SYSTEM_PROMPT      = local.system_prompt
-        CLAUDE_CODE_USE_BEDROCK = "1",
-        ANTHROPIC_MODEL = var.anthropic_model,
-        ANTHROPIC_SMALL_FAST_MODEL = var.anthropic_small_fast_model,
-        CODER_MCP_APP_STATUS_SLUG = "claude-code"
-    }
-    display_apps {
-        vscode          = false
-        vscode_insiders = false
-        web_terminal    = true
-        ssh_helper      = false
-    }
-}
-
-module "coder-login" {
-    source   = "registry.coder.com/coder/coder-login/coder"
-    version  = "1.1.0"
-    agent_id = coder_agent.dev.id
-}
-
-module "code-server" {
-    source   = "registry.coder.com/coder/code-server/coder"
-    version  = "1.3.1"
-    agent_id       = coder_agent.dev.id
-    folder         = local.home_folder
-    subdomain = false
-    order = 0
-}
-
-module "kiro" {
-    source   = "registry.coder.com/coder/kiro/coder"
-    version  = "1.1.0"
-    agent_id = coder_agent.dev.id
-    order = 1
-}
-
-module "claude-code" {
-    count               = data.coder_workspace.me.start_count
-    source              = "registry.coder.com/coder/claude-code/coder"
-    version             = "2.2.0"
-    agent_id            = coder_agent.dev.id
-    folder              = local.home_folder
-    subdomain           = false
-
-    install_claude_code = true
-    order               = 999
-
-    experiment_report_tasks = true
-    experiment_pre_install_script = <<-EOF
-        # If user doesn't have a Github account or aren't 
-        # part of the coder-contrib organization, then they can use the `coder-contrib-bot` account.
-        if [ ! -z "$GH_USERNAME" ]; then
-            unset -v GIT_ASKPASS
-            unset -v GIT_SSH_COMMAND
-        fi
-    EOF
-}
-
-resource "coder_app" "preview" {
-    agent_id     = coder_agent.dev.id
-    slug         = "preview"
-    display_name = "Preview your app"
-    icon         = "${data.coder_workspace.me.access_url}/emojis/1f50e.png"
-    url          = "http://localhost:3000"
-    share        = "authenticated"
-    subdomain    = false
-    open_in      = "tab"
-    order = 3
-    healthcheck {
-        url       = "http://localhost:3000/"
-        interval  = 5
-        threshold = 15
-    }
-}
 
 locals {
     cost = 2
@@ -229,6 +149,131 @@ locals {
 
         When reporting URLs to Coder, report to "https://preview--dev--${data.coder_workspace.me.name}--${data.coder_workspace_owner.me.name}.${local.domain}/" that proxies port ${local.port}
     EOT
+}
+
+resource "coder_env" "bedrock_use" {
+  agent_id = coder_agent.dev.id
+  name     = "CLAUDE_CODE_USE_BEDROCK"
+  value    = "1"
+}
+
+# Uncomment and update variable aws_bearer_token_bedrock if AWS workspace permissions don't support direct AWS Bedrock integration
+# resource "coder_env" "bedrock_api_key" {
+#  agent_id = coder_agent.dev.id
+#  name     = "AWS_BEARER_TOKEN_BEDROCK"
+#  value    = var.aws_bearer_token_bedrock
+#}
+
+resource "coder_agent" "dev" {
+    arch = "amd64"
+    os = "linux"
+    dir = local.home_folder
+    display_apps {
+        vscode          = false
+        vscode_insiders = false
+        web_terminal    = true
+        ssh_helper      = false
+    }
+    startup_script = <<-EOT
+    set -e
+    sudo apt update
+    sudo apt install -y curl unzip
+
+    # install AWS CLI
+    if [ ! -d "aws" ]; then
+      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      unzip awscliv2.zip
+      sudo ./aws/install
+      aws --version
+      rm awscliv2.zip
+    fi
+
+    # install AWS CDK
+    if ! command -v cdk &> /dev/null; then
+      echo "Installing AWS CDK..."
+      # Install Node.js and npm (required for CDK)
+      # Add NodeSource repository for the latest LTS version
+      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+      sudo apt-get install nodejs -y
+      sudo npm install -g npm@11.3.0
+
+      # Verify installation
+      node -v
+      npm -v
+
+      # Install AWS CDK globally
+      sudo npm install -g aws-cdk
+      
+      # Verify CDK installation
+      cdk --version
+      
+      echo "AWS CDK installation completed"
+    else
+      echo "AWS CDK is already installed"
+      cdk --version
+    fi
+
+    EOT
+
+}
+
+module "coder-login" {
+    source   = "registry.coder.com/coder/coder-login/coder"
+    version  = "1.1.0"
+    agent_id = coder_agent.dev.id
+}
+
+module "code-server" {
+    source   = "registry.coder.com/coder/code-server/coder"
+    version  = "1.3.1"
+    agent_id       = coder_agent.dev.id
+    folder         = local.home_folder
+    subdomain = false
+    order = 0
+}
+
+module "kiro" {
+    source   = "registry.coder.com/coder/kiro/coder"
+    version  = "1.1.0"
+    agent_id = coder_agent.dev.id
+    order = 1
+}
+
+module "claude-code" {
+    count               = data.coder_workspace.me.start_count
+    source              = "registry.coder.com/coder/claude-code/coder"
+    version             = "4.2.8"
+    model               = var.anthropic_model
+    agent_id            = coder_agent.dev.id
+    workdir             = local.home_folder
+    subdomain           = false
+    ai_prompt           = local.task_prompt
+    system_prompt       = local.system_prompt
+    report_tasks        = true
+
+    order               = 999
+}
+
+resource "coder_ai_task" "claude-code" {
+    count  = data.coder_workspace.me.start_count
+    app_id = module.claude-code[0].task_app_id
+}
+
+resource "coder_app" "preview" {
+    agent_id     = coder_agent.dev.id
+    slug         = "preview"
+    display_name = "Preview your app"
+    icon         = "${data.coder_workspace.me.access_url}/emojis/1f50e.png"
+    url          = "http://localhost:3000"
+    share        = "authenticated"
+    subdomain    = false
+    open_in      = "tab"
+    order = 3
+    healthcheck {
+        url       = "http://localhost:3000/"
+        interval  = 5
+        threshold = 15
+    }
 }
 
 resource "kubernetes_persistent_volume_claim" "home" {
