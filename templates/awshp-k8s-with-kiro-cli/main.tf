@@ -176,12 +176,12 @@ module "kiro" {
     order = 1
 }
 
-resource "coder_app" "kiro_auth" {
+resource "coder_app" "kiro_cli" {
     agent_id     = coder_agent.dev.id
     slug         = "kiro-auth"
-    display_name = "Authenticate Kiro"
+    display_name = "Kiro CLI"
     icon         = "${data.coder_workspace.me.access_url}/icon/kiro.svg"
-    command      = "kiro-cli login"
+    command      = "kiro-cli"
     share        = "owner"
     order        = 2
 }
