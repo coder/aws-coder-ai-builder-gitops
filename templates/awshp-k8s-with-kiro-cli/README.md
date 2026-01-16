@@ -5,20 +5,22 @@ This Coder template deploys a Kubernetes-based development workspace with the Ki
 ## Features
 
 - **Kiro CLI**: AI-powered development assistant accessible via command line
-- **AWS CLI**: Command-line interface for AWS services
-- **AWS CDK**: Infrastructure as Code toolkit for AWS
+- **AWS CLI**: Command-line interface for AWS services (installed to persistent storage)
+- **AWS CDK**: Infrastructure as Code toolkit for AWS (installed to persistent storage)
 - **code-server**: VS Code in the browser
 - **Kiro Web UI**: Browser-based Kiro interface
-- **Persistent Storage**: Home directory persists across workspace restarts
+- **Persistent Storage**: Home directory persists across workspace restarts, including all installed tools
 
 ## What's Included
 
-### Pre-installed Tools
-- Kiro CLI (latest version)
-- AWS CLI v2
-- AWS CDK
-- Node.js 20.x LTS
-- npm 11.3.0
+### Pre-installed Tools (Persistent)
+All tools are installed to `/home/coder` which is backed by a persistent volume, ensuring they survive pod restarts:
+
+- Kiro CLI (latest version) - installed to `~/.local/bin`
+- AWS CLI v2 - installed to `~/.local/aws-cli` with binaries in `~/bin`
+- AWS CDK - installed to `~/.npm-global` with binaries in `~/bin`
+- Node.js 20.x LTS (system-wide)
+- npm configured for user-local global packages
 
 ### Coder Apps
 - **code-server**: Web-based VS Code IDE
