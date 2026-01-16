@@ -176,6 +176,47 @@ resource "coder_agent" "dev" {
         web_terminal    = true
         ssh_helper      = false
     }
+    startup_script = <<-EOT
+    set -e
+    sudo apt update
+    sudo apt install -y curl unzip
+
+    # install AWS CLI
+    if [ ! -d "aws" ]; then
+      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      unzip awscliv2.zip
+      sudo ./aws/install
+      aws --version
+      rm awscliv2.zip
+    fi
+
+    # install AWS CDK
+    if ! command -v cdk &> /dev/null; then
+      echo "Installing AWS CDK..."
+      # Install Node.js and npm (required for CDK)
+      # Add NodeSource repository for the latest LTS version
+      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+      sudo apt-get install nodejs -y
+      sudo npm install -g npm@11.3.0
+
+      # Verify installation
+      node -v
+      npm -v
+
+      # Install AWS CDK globally
+      sudo npm install -g aws-cdk
+      
+      # Verify CDK installation
+      cdk --version
+      
+      echo "AWS CDK installation completed"
+    else
+      echo "AWS CDK is already installed"
+      cdk --version
+    fi
+
+    EOT
+
 }
 
 module "coder-login" {
