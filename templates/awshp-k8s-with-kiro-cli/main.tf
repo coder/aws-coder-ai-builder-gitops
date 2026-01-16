@@ -85,6 +85,9 @@ resource "coder_agent" "dev" {
     arch = "amd64"
     os = "linux"
     dir = local.home_folder
+    env = {
+        PATH = "/home/coder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    }
     display_apps {
         vscode          = false
         vscode_insiders = false
@@ -131,17 +134,20 @@ resource "coder_agent" "dev" {
     fi
 
     # install Kiro CLI
-    if ! command -v kiro &> /dev/null; then
+    if ! command -v kiro-cli &> /dev/null; then
       echo "Installing Kiro CLI..."
-      curl -fsSL https://kiro.dev/install.sh | sh
+      curl -fsSL https://cli.kiro.dev/install | bash
+      
+      # Add Kiro CLI to PATH for current session
+      export PATH="$HOME/.local/bin:$PATH"
       
       # Verify Kiro CLI installation
-      kiro --version
+      kiro-cli version
       
       echo "Kiro CLI installation completed"
     else
       echo "Kiro CLI is already installed"
-      kiro --version
+      kiro-cli version
     fi
 
     EOT
@@ -175,7 +181,7 @@ resource "coder_app" "kiro_auth" {
     slug         = "kiro-auth"
     display_name = "Authenticate Kiro"
     icon         = "${data.coder_workspace.me.access_url}/icon/kiro.svg"
-    command      = "kiro auth login"
+    command      = "kiro-cli auth login"
     share        = "owner"
     order        = 2
 }

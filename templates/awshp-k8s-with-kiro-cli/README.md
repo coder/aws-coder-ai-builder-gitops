@@ -39,13 +39,16 @@ After authenticating, you can use Kiro from the terminal:
 
 ```bash
 # Start a chat session
-kiro chat
+kiro-cli chat
 
 # Ask Kiro a question
-kiro ask "How do I deploy to AWS?"
+kiro-cli ask "How do I deploy to AWS?"
 
 # Get help
-kiro --help
+kiro-cli --help
+
+# Check version
+kiro-cli version
 ```
 
 ## Configuration
