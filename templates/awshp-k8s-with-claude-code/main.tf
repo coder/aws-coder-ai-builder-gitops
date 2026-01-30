@@ -28,6 +28,20 @@ variable "aws_bearer_token_bedrock" {
   default     = "xxxx-xxx-xxxx"
 }
 
+variable "mcp_bearer_token_pulumi" {
+  type        = string
+  description = "Your Pulumi MPC bearer token. This provides access to Pulumi MPC Server via Claude Code."
+  sensitive   = true
+  default     = "pul-xxxx-xxx-xxxx"
+}
+
+variable "mcp_bearer_token_launchdarkly" {
+  type        = string
+  description = "Your LaunchDarkly MPC API Key. This provides access to LaunchDarkly MPC Server via Claude Code."
+  sensitive   = true
+  default     = "api-xxxx-xxx-xxxx"
+}
+
 variable "anthropic_model" {
   type        = string
   description = "The AWS Inference profile ID of the base Anthropic model to use with Claude Code"
@@ -284,7 +298,7 @@ module "kiro" {
 module "claude-code" {
     count               = data.coder_workspace.me.start_count
     source              = "registry.coder.com/coder/claude-code/coder"
-    version             = "4.2.8"
+    version             = "4.7.1"
     model               = var.anthropic_model
     agent_id            = coder_agent.dev.id
     workdir             = local.home_folder
@@ -292,6 +306,27 @@ module "claude-code" {
     ai_prompt           = local.task_prompt
     system_prompt       = local.system_prompt
     report_tasks        = true
+    
+    mcp = <<-EOF
+    {
+      "mcpServers": {
+        "pulumi": {
+          "headers": {
+            "Authorization": "Bearer ${var.mcp_bearer_token_pulumi}"
+          },
+          "type": "http",
+          "url": "https://mcp.ai.pulumi.com/mcp"
+        },
+        "LaunchDarkly": {
+        "command": "npx",
+        "args": [
+          "-y", "--package", "@launchdarkly/mcp-server", "--", "mcp", "start",
+          "--api-key", "${var.mcp_bearer_token_launchdarkly}"
+          ]
+        }
+      }
+    } 
+    EOF
 
     order               = 999
 }
