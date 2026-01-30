@@ -183,6 +183,20 @@ resource "coder_agent" "dev" {
       kiro-cli version
     fi
 
+    # Install Nirmata CLI (see TBD)
+    if ! command -v nctl &> /dev/null; then
+      export NCTL_VERSION=4.7.10
+      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
+      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip.asc
+      export GNUPGHOME="$(mktemp -d)"
+      gpg --keyserver keys.openpgp.org --recv-key 7CEE8D12BCFE419B55A5D66A4F71AE57094A908B
+      gpg --batch --verify nctl_$NCTL_VERSION\_linux_amd64.zip.asc nctl_$NCTL_VERSION\_linux_amd64.zip
+      unzip -o nctl_$NCTL_VERSION\_linux_amd64.zip
+      chmod u+x nctl
+      sudo mv nctl /usr/local/bin/nctl
+      nctl version
+    fi
+
     EOT
 
 }
@@ -217,23 +231,6 @@ resource "coder_app" "kiro_cli" {
     command      = "kiro-cli"
     share        = "owner"
     order        = 2
-}
-
-resource "coder_app" "preview" {
-    agent_id     = coder_agent.dev.id
-    slug         = "preview"
-    display_name = "Preview your app"
-    icon         = "${data.coder_workspace.me.access_url}/emojis/1f50e.png"
-    url          = "http://localhost:3000"
-    share        = "authenticated"
-    subdomain    = false
-    open_in      = "tab"
-    order = 3
-    healthcheck {
-        url       = "http://localhost:3000/"
-        interval  = 5
-        threshold = 15
-    }
 }
 
 resource "kubernetes_persistent_volume_claim" "home" {
