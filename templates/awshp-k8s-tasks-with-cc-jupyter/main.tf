@@ -50,7 +50,7 @@ data "coder_parameter" "cpu" {
   }
   form_type = "input"
   mutable   = true
-  default   = 4
+  default   = 2
   order     = 1
 }
 
@@ -66,7 +66,7 @@ data "coder_parameter" "memory" {
   }
   form_type = "input"
   mutable   = true
-  default   = 8
+  default   = 6
   order     = 2
 }
 
