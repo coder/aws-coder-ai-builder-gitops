@@ -269,6 +269,20 @@ resource "coder_agent" "dev" {
       cdk --version
     fi
 
+    # Install Nirmata CLI (see TBD)
+    if ! command -v nctl &> /dev/null; then
+      export NCTL_VERSION=4.7.10
+      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
+      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip.asc
+      export GNUPGHOME="$(mktemp -d)"
+      gpg --keyserver keys.openpgp.org --recv-key 7CEE8D12BCFE419B55A5D66A4F71AE57094A908B
+      gpg --batch --verify nctl_$NCTL_VERSION\_linux_amd64.zip.asc nctl_$NCTL_VERSION\_linux_amd64.zip
+      unzip -o nctl_$NCTL_VERSION\_linux_amd64.zip
+      chmod u+x nctl
+      sudo mv nctl /usr/local/bin/nctl
+      nctl version
+    fi
+
     EOT
 
 }
