@@ -283,6 +283,14 @@ resource "coder_agent" "dev" {
       nctl version
     fi
 
+    # Install uv (Python package manager) which includes uvx
+    if ! command -v uv &> /dev/null; then
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    fi
+    
+    export PATH="$HOME/.local/bin:$PATH"
+
     EOT
 
 }
