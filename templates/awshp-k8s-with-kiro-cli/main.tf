@@ -21,6 +21,20 @@ variable "namespace" {
   default     = "coder"
 }
 
+variable "mcp_bearer_token_pulumi" {
+  type        = string
+  description = "Your Pulumi MCP bearer token. This provides access to Pulumi MCP Server via Kiro CLI."
+  sensitive   = true
+  default     = "pul-xxxx-xxx-xxxx"
+}
+
+variable "mcp_bearer_token_launchdarkly" {
+  type        = string
+  description = "Your LaunchDarkly MCP API Key. This provides access to LaunchDarkly MCP Server via Kiro CLI."
+  sensitive   = true
+  default     = "api-xxxx-xxx-xxxx"
+}
+
 locals {
   home_dir        = "/home/coder"
 }
@@ -102,10 +116,10 @@ resource "coder_agent" "dev" {
     mkdir -p $HOME/.local/bin
     
     # Update PATH for current session
-    export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+    export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.npm-global/bin:$PATH"
     
     sudo apt update
-    sudo apt install -y curl unzip
+    sudo apt install -y curl unzip gnupg dirmngr
 
     # install AWS CLI to persistent location
     if ! command -v aws &> /dev/null; then
@@ -115,7 +129,7 @@ resource "coder_agent" "dev" {
       unzip -q awscliv2.zip
       
       # Install to home directory instead of system-wide
-      ./aws/install --install-dir $HOME/.local/aws-cli --bin-dir $HOME/bin
+      ./aws/install --install-dir $HOME/.local/aws-cli --bin-dir $HOME/.local/bin
       
       # Verify installation
       aws --version
@@ -129,7 +143,7 @@ resource "coder_agent" "dev" {
       aws --version
     fi
 
-    # install Node.js and npm (required for CDK and Kiro CLI)
+    # install Node.js and npm (required for CDK, LaunchDarkly MCP, and Kiro CLI)
     if ! command -v node &> /dev/null; then
       echo "Installing Node.js..."
       # Add NodeSource repository for the latest LTS version
@@ -158,7 +172,7 @@ resource "coder_agent" "dev" {
       npm install -g aws-cdk
       
       # Create symlink in bin directory
-      ln -sf $HOME/.npm-global/bin/cdk $HOME/bin/cdk
+      ln -sf $HOME/.npm-global/bin/cdk $HOME/.local/bin/cdk
       
       # Verify CDK installation
       cdk --version
@@ -183,7 +197,16 @@ resource "coder_agent" "dev" {
       kiro-cli version
     fi
 
-    # Install Nirmata CLI (see TBD)
+    # Install uv (Python package manager) which includes uvx for MCP servers
+    if [ ! -f "$HOME/.local/bin/uv" ]; then
+      echo "Installing uv/uvx..."
+      UV_UNMANAGED_INSTALL="$HOME/.local/bin" curl -LsSf https://astral.sh/uv/install.sh | sh
+      echo "uv/uvx installation completed"
+    else
+      echo "uv/uvx is already installed"
+    fi
+
+    # Install Nirmata CLI
     if ! command -v nctl &> /dev/null; then
       export NCTL_VERSION=4.10.7-rc.3
       curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
@@ -193,9 +216,67 @@ resource "coder_agent" "dev" {
       gpg --batch --verify nctl_$NCTL_VERSION\_linux_amd64.zip.asc nctl_$NCTL_VERSION\_linux_amd64.zip
       unzip -o nctl_$NCTL_VERSION\_linux_amd64.zip
       chmod u+x nctl
-      sudo mv nctl /usr/local/bin/nctl
+      sudo mv nctl $HOME/.local/bin/nctl
       nctl version
     fi
+    
+    # Configure Kiro CLI MCP servers
+    echo "Configuring Kiro CLI MCP servers..."
+    mkdir -p $HOME/.kiro/settings
+    
+    # Create MCP configuration file
+    cat > $HOME/.kiro/settings/mcp.json <<'MCP_EOF'
+{
+  "mcpServers": {
+    "pulumi": {
+      "headers": {
+        "Authorization": "Bearer ${var.mcp_bearer_token_pulumi}"
+      },
+      "type": "http",
+      "url": "https://mcp.ai.pulumi.com/mcp"
+    },
+    "LaunchDarkly": {
+      "command": "npx",
+      "args": [
+        "-y", "--package", "@launchdarkly/mcp-server", "--", "mcp", "start",
+        "--api-key", "${var.mcp_bearer_token_launchdarkly}"
+      ]
+    },
+    "arize-tracing-assistant": {
+      "command": "$HOME/.local/bin/uvx",
+      "args": ["arize-tracing-assistant@latest"]
+    }
+  }
+}
+MCP_EOF
+    
+    echo "Kiro CLI MCP configuration completed"
+    
+    # Configure workspace trust settings for Kiro IDE
+    echo "Configuring Kiro IDE workspace trust..."
+    mkdir -p $HOME/.local/share/code-server/User
+    
+    # Create or update settings.json to trust the home folder
+    cat > $HOME/.local/share/code-server/User/settings.json <<'SETTINGS_EOF'
+{
+  "security.workspace.trust.enabled": true,
+  "security.workspace.trust.startupPrompt": "never",
+  "security.workspace.trust.emptyWindow": false,
+  "security.workspace.trust.untrustedFiles": "open"
+}
+SETTINGS_EOF
+    
+    # Add trusted folders configuration
+    mkdir -p $HOME/.kiro/settings
+    cat > $HOME/.kiro/settings/trusted-workspaces.json <<'TRUST_EOF'
+{
+  "trustedFolders": [
+    "/home/coder"
+  ]
+}
+TRUST_EOF
+    
+    echo "Kiro IDE workspace trust configuration completed"
     
     #Symlink Coder Agent
     ln -sf /tmp/coder.*/coder "$CODER_SCRIPT_BIN_DIR/coder" 
