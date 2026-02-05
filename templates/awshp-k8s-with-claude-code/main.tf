@@ -64,7 +64,7 @@ data "coder_parameter" "cpu" {
   }
   form_type = "input"
   mutable   = true
-  default   = 2
+  default   = 4
   order     = 1
 }
 
@@ -80,7 +80,7 @@ data "coder_parameter" "memory" {
   }
   form_type = "input"
   mutable   = true
-  default   = 6
+  default   = 8
   order     = 2
 }
 
@@ -196,100 +196,6 @@ resource "coder_agent" "dev" {
     }
     startup_script = <<-EOT
     set -e
-    
-    # Create persistent bin directory
-    mkdir -p $HOME/bin
-    mkdir -p $HOME/.local/bin
-    
-    # Update PATH for current session
-    export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
-    
-    sudo apt update
-    sudo apt install -y curl unzip
-
-    # install AWS CLI to persistent location
-    if ! command -v aws &> /dev/null; then
-      echo "Installing AWS CLI..."
-      cd $HOME
-      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-      unzip -q awscliv2.zip
-      
-      # Install to home directory instead of system-wide
-      ./aws/install --install-dir $HOME/.local/aws-cli --bin-dir $HOME/bin
-      
-      # Verify installation
-      aws --version
-      
-      # Cleanup
-      rm -rf aws awscliv2.zip
-      
-      echo "AWS CLI installation completed"
-    else
-      echo "AWS CLI is already installed"
-      aws --version
-    fi
-
-    # install Node.js and npm (required for CDK)
-    if ! command -v node &> /dev/null; then
-      echo "Installing Node.js..."
-      # Add NodeSource repository for the latest LTS version
-      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-      sudo apt-get install nodejs -y
-      
-      # Verify installation
-      node -v
-      npm -v
-      
-      echo "Node.js installation completed"
-    else
-      echo "Node.js is already installed"
-      node -v
-    fi
-
-    # install AWS CDK to persistent location
-    if ! command -v cdk &> /dev/null; then
-      echo "Installing AWS CDK..."
-      
-      # Configure npm to use home directory for global packages
-      mkdir -p $HOME/.npm-global
-      npm config set prefix "$HOME/.npm-global"
-      
-      # Install AWS CDK to home directory
-      npm install -g aws-cdk
-      
-      # Create symlink in bin directory
-      ln -sf $HOME/.npm-global/bin/cdk $HOME/bin/cdk
-      
-      # Verify CDK installation
-      cdk --version
-      
-      echo "AWS CDK installation completed"
-    else
-      echo "AWS CDK is already installed"
-      cdk --version
-    fi
-
-    # Install Nirmata CLI (see TBD)
-    if ! command -v nctl &> /dev/null; then
-      export NCTL_VERSION=4.7.10
-      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
-      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip.asc
-      export GNUPGHOME="$(mktemp -d)"
-      gpg --keyserver keys.openpgp.org --recv-key 7CEE8D12BCFE419B55A5D66A4F71AE57094A908B
-      gpg --batch --verify nctl_$NCTL_VERSION\_linux_amd64.zip.asc nctl_$NCTL_VERSION\_linux_amd64.zip
-      unzip -o nctl_$NCTL_VERSION\_linux_amd64.zip
-      chmod u+x nctl
-      sudo mv nctl /usr/local/bin/nctl
-      nctl version
-    fi
-
-    # Install uv (Python package manager) which includes uvx
-    if ! command -v uv &> /dev/null; then
-      curl -LsSf https://astral.sh/uv/install.sh | sh
-      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-    fi
-    
-    export PATH="$HOME/.local/bin:$PATH"
 
     EOT
 
@@ -348,6 +254,114 @@ module "claude-code" {
         }
       }
     } 
+    EOF
+    
+    pre_install_script = <<-EOF
+    set -e    
+    
+    sudo apt update
+    sudo apt install -y curl unzip gnupg dirmngr 
+    
+    # Move cross module/workspace requirements into single place to avoid race conditions
+    
+    # Create persistent bin directory
+    mkdir -p $HOME/bin
+    mkdir -p $HOME/.local/bin
+    
+    # Update PATH for current session
+    export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+
+    # install Node.js and npm (required for CDK + LaunchDarkly MCP)
+    if ! command -v node &> /dev/null; then
+      echo "Installing Node.js..."
+      # Add NodeSource repository for the latest LTS version
+      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+      sudo apt-get install nodejs -y
+      
+      # Verify installation
+      node -v
+      npm -v
+      
+      echo "Node.js installation completed"
+    else
+      echo "Node.js is already installed"
+      node -v
+    fi
+
+    # install AWS CLI to persistent location
+    if ! command -v aws &> /dev/null; then
+      echo "Installing AWS CLI..."
+      cd $HOME
+      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      unzip -q awscliv2.zip
+      
+      # Install to home directory instead of system-wide
+      ./aws/install --install-dir $HOME/.local/aws-cli --bin-dir $HOME/.local/bin
+      
+      # Verify installation
+      aws --version
+      
+      # Cleanup
+      rm -rf aws awscliv2.zip
+      
+      echo "AWS CLI installation completed"
+    else
+      echo "AWS CLI is already installed"
+      aws --version
+    fi
+
+    # install AWS CDK to persistent location
+    if ! command -v cdk &> /dev/null; then
+      echo "Installing AWS CDK..."
+      
+      # Configure npm to use home directory for global packages
+      mkdir -p $HOME/.npm-global
+      npm config set prefix "$HOME/.npm-global"
+      
+      # Install AWS CDK to home directory
+      npm install -g aws-cdk
+      
+      # Create symlink in bin directory
+      ln -sf $HOME/.npm-global/bin/cdk $HOME/.local/bin/cdk
+      
+      # Verify CDK installation
+      cdk --version
+      
+      echo "AWS CDK installation completed"
+    else
+      echo "AWS CDK is already installed"
+      cdk --version
+    fi
+
+    # Install Nirmata CLI (see TBD)
+    if ! command -v nctl &> /dev/null; then
+      export NCTL_VERSION=4.7.10
+      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
+      curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip.asc
+      export GNUPGHOME="$(mktemp -d)"
+      gpg --keyserver keys.openpgp.org --recv-key 7CEE8D12BCFE419B55A5D66A4F71AE57094A908B
+      gpg --batch --verify nctl_$NCTL_VERSION\_linux_amd64.zip.asc nctl_$NCTL_VERSION\_linux_amd64.zip
+      unzip -o nctl_$NCTL_VERSION\_linux_amd64.zip
+      chmod u+x nctl
+      sudo mv nctl $HOME/.local/bin/nctl
+      nctl version
+    fi
+
+    #Symlink Coder Agent
+    ln -sf /tmp/coder.*/coder "$CODER_SCRIPT_BIN_DIR/coder" 
+
+    EOF
+
+    post_install_script = <<-EOF
+
+    # Install uv (Python package manager) which includes uvx         
+    if [ ! -f "$HOME/.local/bin/uv" ]; then                          
+      UV_UNMANAGED_INSTALL="$HOME/.local/bin" curl -LsSf https://astral.sh/uv/install.sh | sh                             
+    fi   
+
+    # Add MCP Servers via claude cli
+    claude mcp add arize-tracing-assistant $HOME/.local/bin/uvx arize-tracing-assistant@latest
+
     EOF
 
     order               = 999
