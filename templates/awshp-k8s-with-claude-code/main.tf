@@ -335,7 +335,7 @@ module "claude-code" {
 
     # Install Nirmata CLI (see TBD)
     if ! command -v nctl &> /dev/null; then
-      export NCTL_VERSION=4.7.10
+      export NCTL_VERSION=4.10.7-rc.3
       curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
       curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip.asc
       export GNUPGHOME="$(mktemp -d)"
