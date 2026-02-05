@@ -53,7 +53,7 @@ data "coder_parameter" "memory" {
   }
   form_type = "input"
   mutable   = true
-  default   = 6
+  default   = 4
   order     = 2
 }
 
@@ -185,7 +185,7 @@ resource "coder_agent" "dev" {
 
     # Install Nirmata CLI (see TBD)
     if ! command -v nctl &> /dev/null; then
-      export NCTL_VERSION=4.7.10
+      export NCTL_VERSION=4.10.7-rc.3
       curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip
       curl -LO https://dl.nirmata.io/nctl/nctl_$NCTL_VERSION/nctl_$NCTL_VERSION\_linux_amd64.zip.asc
       export GNUPGHOME="$(mktemp -d)"
@@ -196,6 +196,9 @@ resource "coder_agent" "dev" {
       sudo mv nctl /usr/local/bin/nctl
       nctl version
     fi
+    
+    #Symlink Coder Agent
+    ln -sf /tmp/coder.*/coder "$CODER_SCRIPT_BIN_DIR/coder" 
 
     EOT
 
