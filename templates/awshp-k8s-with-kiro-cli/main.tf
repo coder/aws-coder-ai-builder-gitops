@@ -224,8 +224,8 @@ resource "coder_agent" "dev" {
     echo "Configuring Kiro CLI MCP servers..."
     mkdir -p $HOME/.kiro/settings
     
-    # Create MCP configuration file
-    cat > $HOME/.kiro/settings/mcp.json <<'MCP_EOF'
+    # Create MCP configuration file with variable substitution
+    cat > $HOME/.kiro/settings/mcp.json <<MCP_EOF
 {
   "mcpServers": {
     "pulumi": {
@@ -243,7 +243,7 @@ resource "coder_agent" "dev" {
       ]
     },
     "arize-tracing-assistant": {
-      "command": "$HOME/.local/bin/uvx",
+      "command": "\$HOME/.local/bin/uvx",
       "args": ["arize-tracing-assistant@latest"]
     }
   }
