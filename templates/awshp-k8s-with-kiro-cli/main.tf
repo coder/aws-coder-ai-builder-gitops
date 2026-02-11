@@ -224,8 +224,9 @@ resource "coder_agent" "dev" {
     echo "Configuring Kiro CLI MCP servers..."
     mkdir -p $HOME/.kiro/settings
     
-    # Determine the correct npx path
-    NPX_PATH=$(which npx)
+    # Determine the correct paths for MCP server commands
+    NODE_PATH=$(which node)
+    NPX_CLI_PATH=$(readlink -f $(which npx))
     UVX_PATH="$HOME/.local/bin/uvx"
     
     # Create MCP configuration file with actual resolved paths
@@ -240,8 +241,9 @@ resource "coder_agent" "dev" {
       "url": "https://mcp.ai.pulumi.com/mcp"
     },
     "LaunchDarkly": {
-      "command": "$NPX_PATH",
+      "command": "$NODE_PATH",
       "args": [
+        "$NPX_CLI_PATH",
         "-y", "--package", "@launchdarkly/mcp-server", "--", "mcp", "start",
         "--api-key", "${var.mcp_bearer_token_launchdarkly}"
       ]
