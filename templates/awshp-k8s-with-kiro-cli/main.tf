@@ -222,9 +222,9 @@ resource "coder_agent" "dev" {
     
     # Configure Kiro CLI MCP servers
     echo "Configuring Kiro CLI MCP servers..."
-    mkdir -p $HOME/.kiro/settings
     
-    # Create MCP configuration file using absolute paths
+    # Create user-level MCP configuration
+    mkdir -p $HOME/.kiro/settings
     cat > $HOME/.kiro/settings/mcp.json <<MCP_EOF
 {
   "mcpServers": {
@@ -236,9 +236,8 @@ resource "coder_agent" "dev" {
       "url": "https://mcp.ai.pulumi.com/mcp"
     },
     "LaunchDarkly": {
-      "command": "/usr/bin/node",
+      "command": "npx",
       "args": [
-        "/usr/bin/npx",
         "-y",
         "--package",
         "@launchdarkly/mcp-server",
@@ -250,14 +249,14 @@ resource "coder_agent" "dev" {
       ]
     },
     "arize-tracing-assistant": {
-      "command": "$HOME/.local/bin/uvx",
+      "command": "/home/coder/.local/bin/uvx",
       "args": ["arize-tracing-assistant@latest"]
     }
   }
 }
 MCP_EOF
     
-    echo "Kiro CLI MCP configuration completed"
+    echo "Kiro CLI MCP configuration completed (user-level)"
     
     # Configure workspace trust settings for Kiro IDE
     echo "Configuring Kiro IDE workspace trust..."
