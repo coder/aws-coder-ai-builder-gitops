@@ -224,7 +224,7 @@ resource "coder_agent" "dev" {
     echo "Configuring Kiro CLI MCP servers..."
     mkdir -p $HOME/.kiro/settings
     
-    # Create MCP configuration file using standard npx command
+    # Create MCP configuration file using absolute paths
     cat > $HOME/.kiro/settings/mcp.json <<MCP_EOF
 {
   "mcpServers": {
@@ -236,8 +236,9 @@ resource "coder_agent" "dev" {
       "url": "https://mcp.ai.pulumi.com/mcp"
     },
     "LaunchDarkly": {
-      "command": "npx",
+      "command": "/usr/bin/node",
       "args": [
+        "/usr/bin/npx",
         "-y",
         "--package",
         "@launchdarkly/mcp-server",
