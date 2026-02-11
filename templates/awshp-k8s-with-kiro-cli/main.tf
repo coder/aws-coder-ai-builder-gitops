@@ -225,11 +225,11 @@ resource "coder_agent" "dev" {
     mkdir -p $HOME/.kiro/settings
     
     # Determine the correct paths for MCP server commands
+    NODE_PATH=$(which node)
     NPX_CLI_PATH=$(readlink -f $(which npx))
     UVX_PATH="$HOME/.local/bin/uvx"
     
-    # Create MCP configuration file with actual resolved paths
-    # Note: Using 'node' without full path to rely on PATH resolution
+    # Create MCP configuration file with absolute paths and env variables
     cat > $HOME/.kiro/settings/mcp.json <<MCP_EOF
 {
   "mcpServers": {
@@ -241,12 +241,21 @@ resource "coder_agent" "dev" {
       "url": "https://mcp.ai.pulumi.com/mcp"
     },
     "LaunchDarkly": {
-      "command": "node",
+      "command": "$NODE_PATH",
       "args": [
         "$NPX_CLI_PATH",
-        "-y", "--package", "@launchdarkly/mcp-server", "--", "mcp", "start",
-        "--api-key", "${var.mcp_bearer_token_launchdarkly}"
-      ]
+        "-y",
+        "--package",
+        "@launchdarkly/mcp-server",
+        "--",
+        "mcp",
+        "start",
+        "--api-key",
+        "${var.mcp_bearer_token_launchdarkly}"
+      ],
+      "env": {
+        "PATH": "$HOME/.local/bin:$HOME/bin:$HOME/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      }
     },
     "arize-tracing-assistant": {
       "command": "$UVX_PATH",
