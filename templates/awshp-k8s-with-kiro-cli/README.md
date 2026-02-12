@@ -8,7 +8,7 @@ This Coder template deploys a Kubernetes-based development workspace with the Ki
 - **AWS CLI**: Command-line interface for AWS services (installed to persistent storage)
 - **AWS CDK**: Infrastructure as Code toolkit for AWS (installed to persistent storage)
 - **code-server**: VS Code in the browser
-- **Kiro Web UI**: Browser-based Kiro interface
+- **Kiro IDE**: Kiro IDE interface
 - **Persistent Storage**: Home directory persists across workspace restarts, including all installed tools
 
 ## What's Included
