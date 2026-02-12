@@ -24,8 +24,8 @@ All tools are installed to `/home/coder` which is backed by a persistent volume,
 
 ### Coder Apps
 - **code-server**: Web-based VS Code IDE
-- **Kiro**: Browser-based Kiro interface
-- **Authenticate Kiro**: One-click button to authenticate Kiro CLI
+- **Kiro**: Kiro IDE Workspace interface
+- **Kiro CLI**: One-click button to authenticate Kiro CLI
 - **Preview**: Preview web applications running on localhost:3000
 
 ## Getting Started
