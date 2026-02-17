@@ -6,7 +6,7 @@ Enterprise-grade AI-powered development platform on AWS using Coder, Kubernetes,
 
 ## Overview
 
-This repository provides infrastructure-as-code and Coder workspace templates for deploying a complete AI-assisted development environment on AWS. The platform combines Coder's cloud development environments with AI coding assistants, running on Amazon EKS with Aurora PostgreSQL backend.
+This repository provides infrastructure-as-code and Coder workspace templates for deploying a complete AI-assisted development environment on AWS. The platform combines Coder's cloud development environments with AI coding assistants, running on Amazon EKS with Aurora PostgreSQL backend.  See [Deployment Instructions](#deployment-instructions) to deploy into your own AWS Account.
 
 ## Architecture
 
