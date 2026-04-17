@@ -1,0 +1,36 @@
+version: 0.2
+
+env:
+  variables:
+    HELM_VERSION: "3.16.4"
+    CODER_VERSION: "2.30.2"
+    ECR_PUBLIC_ALIAS: ""  # Set to your public ECR alias e.g. "a1b2c3d4"
+    IMAGE_REPO_NAME: "coder-codebuild"
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR Public..."
+      - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/${ECR_PUBLIC_ALIAS}
+      - IMAGE_TAG=$(date +%Y%m%d)-$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)
+      - IMAGE_URI=public.ecr.aws/${ECR_PUBLIC_ALIAS}/${IMAGE_REPO_NAME}
+
+  build:
+    commands:
+      - echo "Building Docker image..."
+      - |
+        docker build \
+          --build-arg HELM_VERSION=${HELM_VERSION} \
+          --build-arg CODER_VERSION=${CODER_VERSION} \
+          -t ${IMAGE_URI}:${IMAGE_TAG} \
+          -t ${IMAGE_URI}:latest \
+          -f docker/Dockerfile \
+          docker/
+
+  post_build:
+    commands:
+      - echo "Pushing image to ECR Public..."
+      - docker push ${IMAGE_URI}:${IMAGE_TAG}
+      - docker push ${IMAGE_URI}:latest
+      - echo "Pushed ${IMAGE_URI}:${IMAGE_TAG}"
+      - echo "Pushed ${IMAGE_URI}:latest"

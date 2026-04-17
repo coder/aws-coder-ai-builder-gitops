@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CodeBuild pipeline to build and push the Coder deployment container image
+  to a public ECR repository. The resulting image pre-bakes kubectl, eksctl,
+  helm, terraform, coder CLI, and AWS CLI so the main deployment build has
+  zero download dependencies in its pre_build phase.
+
+Parameters:
+  ECRPublicRepositoryName:
+    Type: String
+    Default: coder-codebuild
+    Description: Name of the public ECR repository
+
+  HelmVersion:
+    Type: String
+    Default: "3.16.4"
+
+  CoderVersion:
+    Type: String
+    Default: "2.30.2"
+
+  SourceBucket:
+    Type: String
+    Description: S3 bucket containing the zipped source (Dockerfile + buildspec)
+
+  SourceObjectKey:
+    Type: String
+    Description: S3 object key for the zipped source
+    Default: "codebuild-image-source.zip"
+
+Resources:
+
+  #####################################
+  # Lambda – Create ECR Public repo
+  # and discover the registry alias
+  # (works from any region)
+  #####################################
+  ECRPublicRepoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ECRPublicManage
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr-public:CreateRepository
+                  - ecr-public:DeleteRepository
+                  - ecr-public:DescribeRepositories
+                  - ecr-public:DescribeRegistries
+                Resource: "*"
+
+  ECRPublicRepoFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt ECRPublicRepoRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          # ECR Public API lives exclusively in us-east-1
+          ecr = boto3.client("ecr-public", region_name="us-east-1")
+
+          def handler(event, context):
+              logger.info(f"Event: {json.dumps(event)}")
+              repo_name = event["ResourceProperties"]["RepositoryName"]
+
+              try:
+                  if event["RequestType"] == "Delete":
+                      try:
+                          ecr.delete_repository(repositoryName=repo_name, force=True)
+                          logger.info(f"Deleted repo {repo_name}")
+                      except ecr.exceptions.RepositoryNotFoundException:
+                          logger.info("Repo already gone, nothing to delete")
+                      send(event, context, "SUCCESS", {}, repo_name)
+                      return
+
+                  # Create or Update – ensure repo exists
+                  try:
+                      ecr.create_repository(
+                          repositoryName=repo_name,
+                          catalogData={
+                              "description": "Pre-built image for Coder EKS deployment CodeBuild jobs",
+                              "operatingSystems": ["Linux"],
+                              "architectures": ["x86-64"],
+                          },
+                      )
+                      logger.info(f"Created repo {repo_name}")
+                  except ecr.exceptions.RepositoryAlreadyExistsException:
+                      logger.info(f"Repo {repo_name} already exists")
+
+                  # Discover the registry alias
+                  registries = ecr.describe_registries()
+                  alias = registries["registries"][0]["aliases"][0]["name"]
+                  logger.info(f"ECR Public alias: {alias}")
+
+                  # Get the repo ARN
+                  repos = ecr.describe_repositories(repositoryNames=[repo_name])
+                  repo_arn = repos["repositories"][0]["repositoryArn"]
+
+                  send(event, context, "SUCCESS", {
+                      "Alias": alias,
+                      "RepositoryArn": repo_arn,
+                      "RepositoryUri": f"public.ecr.aws/{alias}/{repo_name}",
+                  }, repo_name)
+
+              except Exception as e:
+                  logger.error(f"Error: {e}")
+                  send(event, context, "FAILED", {"Reason": str(e)}, repo_name)
+
+          def send(event, context, status, data, physical_id="none"):
+              body = json.dumps({
+                  "Status": status,
+                  "Reason": data.get("Reason", "See CloudWatch"),
+                  "PhysicalResourceId": physical_id,
+                  "StackId": event["StackId"],
+                  "RequestId": event["RequestId"],
+                  "LogicalResourceId": event["LogicalResourceId"],
+                  "Data": data,
+              })
+              req = urllib.request.Request(
+                  url=event["ResponseURL"],
+                  data=body.encode("utf-8"),
+                  headers={"content-type": "", "content-length": str(len(body))},
+                  method="PUT",
+              )
+              with urllib.request.urlopen(req) as resp:
+                  logger.info(f"CFN response: {resp.getcode()}")
+
+  PublicECRRepository:
+    Type: Custom::ECRPublicRepository
+    Properties:
+      ServiceToken: !GetAtt ECRPublicRepoFunction.Arn
+      RepositoryName: !Ref ECRPublicRepositoryName
+
+  #####################################
+  # IAM Role for Image Build
+  #####################################
+  ImageBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: coder-image-build-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ImageBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Sid: ECRPublicAuth
+                Effect: Allow
+                Action:
+                  - ecr-public:GetAuthorizationToken
+                  - sts:GetServiceBearerToken
+                Resource: "*"
+              - Sid: ECRPublicPush
+                Effect: Allow
+                Action:
+                  - ecr-public:BatchCheckLayerAvailability
+                  - ecr-public:InitiateLayerUpload
+                  - ecr-public:UploadLayerPart
+                  - ecr-public:CompleteLayerUpload
+                  - ecr-public:PutImage
+                Resource: !GetAtt PublicECRRepository.RepositoryArn
+              - Sid: S3Source
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "arn:aws:s3:::${SourceBucket}/${SourceObjectKey}"
+
+  #####################################
+  # CodeBuild Project – Image Builder
+  #####################################
+  ImageBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: coder-codebuild-image-builder
+      Description: Builds the pre-baked container image for Coder deployment builds
+      ServiceRole: !GetAtt ImageBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: ECR_PUBLIC_ALIAS
+            Value: !GetAtt PublicECRRepository.Alias
+          - Name: IMAGE_REPO_NAME
+            Value: !Ref ECRPublicRepositoryName
+          - Name: HELM_VERSION
+            Value: !Ref HelmVersion
+          - Name: CODER_VERSION
+            Value: !Ref CoderVersion
+      Source:
+        Type: S3
+        Location: !Sub "${SourceBucket}/${SourceObjectKey}"
+        BuildSpec: docker/buildspec_image.yaml
+      TimeoutInMinutes: 30
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: /aws/codebuild/coder-image-builder
+          StreamName: build-log
+
+Outputs:
+  ECRPublicRepositoryUri:
+    Description: Public ECR repository URI for the Coder CodeBuild image
+    Value: !GetAtt PublicECRRepository.RepositoryUri
+
+  ECRPublicAliasValue:
+    Description: Your ECR Public registry alias
+    Value: !GetAtt PublicECRRepository.Alias
+
+  ImageBuildProjectName:
+    Description: CodeBuild project name for building the container image
+    Value: !Ref ImageBuildProject
+
+  ECRPublicRepositoryArn:
+    Description: ARN of the public ECR repository
+    Value: !GetAtt PublicECRRepository.RepositoryArn

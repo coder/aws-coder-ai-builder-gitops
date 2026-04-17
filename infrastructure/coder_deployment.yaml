@@ -19,7 +19,7 @@ Parameters:
   CoderVersion:
     Description: Coder version
     Type: String
-    Default: "2.29.1"
+    Default: "2.30.2"
 
   EKSClusterName:
     Description: Name of EKS Cluster
@@ -81,7 +81,7 @@ Parameters:
   CoderGitOpsTemplateRepoURL:
     Type: String
     Description: Coder GitOps Template Repository URL
-    Default: "https://github.com/coder/aws-coder-ai-builder-gitops.git"
+    Default: "https://github.com/coder/aws-coder-workshop-gitops.git"
     
   RetryFlag:
     Type: String
@@ -215,6 +215,8 @@ Resources:
                   - iam:TagRole
                   - iam:UntagRole
                   - iam:CreateInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:ListInstanceProfiles
                   - iam:DeleteInstanceProfile
                   - iam:AddRoleToInstanceProfile
                   - iam:RemoveRoleFromInstanceProfile
@@ -617,7 +619,7 @@ Resources:
     Properties:
       DBClusterIdentifier: !Ref DatabaseName
       Engine: aurora-postgresql
-      EngineVersion: '16.6'
+      EngineVersion: '16.11'
       MasterUsername: !Ref Username
       MasterUserPassword: !Ref Password
       DatabaseName: !Ref DatabaseName
@@ -660,7 +662,7 @@ Resources:
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Image: public.ecr.aws/v1u7c9b4/coder-codebuild:latest
         EnvironmentVariables:
           - Name: WAIT_HANDLE_URL
             Value: !Ref EKSClusterWaitHandle
@@ -777,24 +779,6 @@ Resources:
                     keyARN: ${KMS_ARN}
                   EOF
                 - cat cluster-config.yaml
-                - pip3 install --upgrade --user awscli
-                - curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
-                - chmod +x ./kubectl
-                - curl --silent --fail --retry 5 --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-                - mv -v /tmp/eksctl /usr/local/bin
-                - eksctl version
-                - curl --silent --fail --retry 5 --location "https://get.helm.sh/helm-v3.16.4-linux-amd64.tar.gz" | tar xz -C /tmp
-                - mv -v /tmp/linux-amd64/helm /usr/local/bin
-                - helm version
-                - curl --silent --fail --retry 5 -L https://coder.com/install.sh | sh -s -- --version ${CoderVersion} --method standalone
-                - coder --version
-                - TERRAFORM_VERSION=$(curl --silent --fail --retry 5 --location "https://api.github.com/repos/hashicorp/terraform/releases/latest" | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
-                - curl --silent --fail --retry 5 --location https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-                - unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-                - mv terraform /usr/local/bin/
-                - chmod +x /usr/local/bin/terraform
-                - terraform version
-                - export PATH=$PWD/:$PATH
             build:
               commands:
                 - echo ">>> creating EKS cluster in region $AWSRegion with Auto Mode"
@@ -922,6 +906,14 @@ Resources:
                       sed -i "s|https://coder.example.com|$CODER_CLOUDFRONT_URL|g" coder-core-values-v2.yaml
                       sed -i "s|\*.coder.example.com|$CODER_CLOUDFRONT_WILDCARD|g" coder-core-values-v2.yaml
                       helm upgrade coder coder-v2/coder --namespace coder --values coder-core-values-v2.yaml --version "${CoderVersion}"
+                      
+                      kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=coder -n coder --timeout=300s
+
+                      echo "Cycling CloudFront connection pool..."
+                      for i in {1..20}; do
+                        curl -s -f "$CODER_CLOUDFRONT_URL/api/v2/buildinfo" > /dev/null 2>&1 || true
+                        sleep 3
+                      done
 
                       # Health Check Step 2: Check Coder Pod Status
                       echo "=== Health Check: Verifying Coder Pod Status ==="
@@ -935,15 +927,15 @@ Resources:
                         kubectl describe pod -n coder $(kubectl get pods -n coder -o jsonpath='{.items[0].metadata.name}')
                       fi
 
-                      # Health Check Step 3: Test Direct ALB Access
-                      echo "=== Health Check: Testing Direct ALB Connectivity ==="
+                      # Health Check Step 3: Test Direct NLB Access
+                      echo "=== Health Check: Testing Direct NLB Connectivity ==="
                       ALB_HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://$CODER_LB_HOSTNAME/api/v2/buildinfo)
-                      echo "ALB Health Check Response: $ALB_HEALTH_CHECK"
+                      echo "NLB Health Check Response: $ALB_HEALTH_CHECK"
                       
                       if [ "$ALB_HEALTH_CHECK" != "200" ]; then
-                        echo "WARNING: ALB health check failed with status $ALB_HEALTH_CHECK"
+                        echo "WARNING: NLB health check failed with status $ALB_HEALTH_CHECK"
                       else
-                        echo "SUCCESS: ALB is responding correctly"
+                        echo "SUCCESS: NLB is responding correctly"
                       fi
 
                       # Health Check Step 4: Test CloudFront Access
